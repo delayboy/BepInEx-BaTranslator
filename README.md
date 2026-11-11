@@ -1,8 +1,23 @@
-# 蔚蓝档案 繁→简运行时转换插件（MuvluvUiTranslate）
+# 蔚蓝档案注入式翻译插件
 
-《蔚蓝档案（Blue Archive）》Steam PC 版的**繁体中文→简体中文**运行时转换插件，BepInEx 6 IL2CPP 插件。通过 Hook NGUI `UILabel.set_text`，对含汉字的文本做 OpenCC 繁转简后写回。
+本项目基于以下两个先行项目进行探索构建，使用内存函数hook方案，**目前尚未排除封号风险！！！**，**请谨慎考虑使用本项目**。
 
-> 本仓库原为《少女庭园》的 TMP 日译中插件（旧 README.md / 计划书）。本插件是为 BA 重新设计的纯繁简转换方案，技术路线与旧项目完全不同。
+- 蔚蓝档案steam端静态文本翻译补丁工具项目（无封号风险）：https://github.com/delayboy/BlueArchive-Translator
+- BepInEx 少女庭园 UI 内存汉化补丁（使用内存方案，目前未封号）：https://github.com/delayboy/girlsgarden_translate
+
+**使用方式**
+
+下载【BepInEx.6.0.0-be.785-Ba-BaTranslator-v0.1.0.7z】压缩包，拷贝到游戏安装目录下（和BlueArchive.exe放到同一目录），提示文件覆盖时，选择确定。替换完成后，启动游戏会弹出黑色控制台窗口，证明安装成功。首次运行会加载所需文件，导致卡顿或无法登录的情况（无法登录属于正常现象），等待30s左右，关闭游戏，重新登录问题大概率会解决。 
+
+**卸载插件**
+
+直接删除winhttp.dll即可使插件失效，电脑高手可自行清理。
+
+**项目简介**
+
+《蔚蓝档案（Blue Archive）》Steam PC 版的**繁体中文→简体中文**注入式BepInEx 6 IL2CPP 插件。通过 Hook NGUI `UILabel.set_text`，对含汉字的文本做 OpenCC 繁转简后写回。
+
+> BepInEx 插件设计参考《少女庭园》的 TMP 日译中插件。针对BA重构代码，替换为繁简转换方案，技术路线高度简化。
 
 ---
 
@@ -13,11 +28,11 @@
 - **目标**：繁→简（不是日译中）。字形问题（字体不显示简体）已由静态字体文件替换解决，本插件只做字面转换
 - **Hook 点**：`UILabel.set_text`（NGUI，非 TMP/uGUI）。dump.cs 验证 BA 全部文本经此入口
 - **转换**：`OpenCCNET.ZhConverter.TWToHans(text, false)` + `ConcurrentDictionary` 缓存
-- **语言枚举**：`Language { Kr=0, Jp=1, Th=2, Tw=3, En=4 }`，无简中，故需本插件
+- **语言枚举**：`Language { Kr=0, Jp=1, Th=2, Tw=3, En=4 }`，无简中
 
 ---
 
-## 1. 技术路线（为什么是这样）
+## 1. 技术路线
 
 ### 1.1 框架选型
 
@@ -43,7 +58,7 @@ BA 的 Unity 2021.3.56f2 是 2025 末的 LTS 补丁版，内部 il2cpp 运行时
 
 > 原版 DLL 备份为 `BepInEx/core/Il2CppInterop.Runtime.dll.orig.bak`。升级 BepInEx BE 后会被覆盖，需重打补丁。源码见 `Il2CppInterop-1.5.3` 目录。
 
-### 1.3 文本入口定位（dump.cs 离线分析，零运行时风险）
+### 1.3 文本入口定位（dump.cs 离线分析）
 
 **不要用 `FindObjectsOfType<TMP_Text>()` 做运行时扫描**——BA 主 UI 是 NGUI，返回 0，且反复扫描游戏进程有反作弊检测风险。
 
