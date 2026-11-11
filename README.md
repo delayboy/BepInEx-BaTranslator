@@ -1,4 +1,9 @@
-# 蔚蓝档案 繁→简运行时转换插件（MuvluvUiTranslate）
+# 蔚蓝档案 BepInEx-BaTranslator 翻译插件
+
+本项目基于以下两个先行项目进行探索构建，使用内存函数hook方案，有**封号风险！！！**，**请谨慎考虑使用本项目**。
+
+- 蔚蓝档案steam端静态文本翻译补丁工具项目（无封号风险）：https://github.com/delayboy/BlueArchive-Translator
+- BepInEx 少女庭园 UI 内存汉化补丁（使用内存方案，目前未封号）：https://github.com/delayboy/girlsgarden_translate
 
 《蔚蓝档案（Blue Archive）》Steam PC 版的**繁体中文→简体中文**运行时转换插件，BepInEx 6 IL2CPP 插件。通过 Hook NGUI `UILabel.set_text`，对含汉字的文本做 OpenCC 繁转简后写回。
 
