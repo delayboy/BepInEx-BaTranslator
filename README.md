@@ -1,6 +1,6 @@
 # 蔚蓝档案注入式翻译插件
 
-本项目基于以下两个先行项目进行探索构建，使用内存函数hook方案，**目前尚未排除封号风险！！！**，**请谨慎考虑使用本项目**。
+本项目基于以下两个先行项目进行探索构建，使用内存函数hook方案。**结论（2026-11-14）：注入方案已被游戏反作弊判死——游玩约 10 分钟触发"使用者验证失败，将结束应用程式"后被踢出，完整链路已查明（见 §5.5）。后续方向为转静态离线翻译，不再与反作弊对抗。**
 
 - 蔚蓝档案steam端静态文本翻译补丁工具项目（无封号风险）：https://github.com/delayboy/BlueArchive-Translator
 - BepInEx 少女庭园 UI 内存汉化补丁（使用内存方案，目前未封号）：https://github.com/delayboy/girlsgarden_translate
@@ -202,9 +202,45 @@ BlueArchive/
 
 `Plugin.InitOpenCC()` 用 `Path.GetDirectoryName(Assembly.Location)` 定位词库。IL2CPP 下插件 dll 的 `Assembly.Location` 指向 `plugins/MuvluvUiTranslate/MuvluvUiTranslate.dll`，词库在同目录 `Dictionary/`。若 BepInEx 改变加载方式导致 Location 异常，需改用 `AppDomain.CurrentDomain.GetAssemblies()` 反查或硬编码 `Paths.PluginPath`。
 
-### 5.5 未验证：BA 反作弊
+### 5.5 ★ 已查明：BA 反作弊是 grap（非 GameGuard），10分钟踢出链路完整验证
 
-BA 用 nProtect GameGuard（`nxinface.enconfig.json`）。BepInEx 注入本身是被检测的主因，本插件的 Harmony hook 是在注入成功之后。目前未触发检测，但 OpenCC 首次转换耗时（词库加载）若卡在敏感时序上有理论风险。已通过"启动时同步初始化"规避：词库在 Chainloader 阶段加载完毕，hook 命中时只查表。
+**现象**：游玩约 10 分钟触发"使用者验证失败，将结束应用程式"后进程退出。该文案来自 `LocalizeErrorExcel.json`：
+
+```json
+{ "Key": 3412485615, "ErrorLevel": 2,
+  "Tw": "使用者验证失败，将结束应用程式。", "En": "User verification failed. Closing the app." }
+```
+
+**反作弊本体是 grap（Nexon 自家方案）**，位于 `BlueArchive_Data/Plugins/x86_64/grap/`：
+
+| 组件 | 作用 |
+| :--- | :--- |
+| `grap64.dll` | 游戏进程内用户态模块 |
+| `BlackCat64.sys` | **内核驱动**（2026-04 构建，4MB）——用户态隐藏手段对其无效 |
+| `grap-core64.aes` / `grap-communicator64.aes` / `grap-updater.aes` | AES 加密核心模块，运行时解密加载（防静态分析） |
+| `NGService.exe` + 全套 `.log` | 常驻服务；日志全密文但有重复密文块（疑似固定密钥，可逆） |
+
+根目录 `nxinface.enconfig.json` 为混淆过的 Nexon 平台配置。~~BA 用 nProtect GameGuard~~ 的旧推断作废。
+
+**排除项**：dump.cs 里的 `XIGNCODE3Interface`（ProbeEx/GetCookie2）经同版本 IDA 验证**全 DLL 零代码调用**（仅 il2cpp 方法注册表的 data 引用）——手游遗留死代码，与 PC 踢出无关。
+
+**踢出链路（2026-11-14 用 8 月版 IDB + 同版 dump.cs 逐环验证，地址均为 8 月版 RVA）**：
+
+```
+grap 周期上报（用户态 + 内核驱动采集）
+  → 服务器验证判决失败
+  → WebAPI 响应携带 ErrorPacket（错误码为十进制字符串 "3412485615"）
+  → SessionTask.HandleWebAPIError @ 0x180E278B0（9KB 分发器；小数字错误码 10012/30018/50000/50005 等另有特例 switch）
+  → LocalizeData.TryGetErrorLevel @ 0x1818ECA40（uint.Parse → LocalizeErrorExcelRepository.SelectFirst_Key @ 0x181B7FC70）
+  → ErrorLevel = WebAPIErrorLevel.Error(2) → 弹 NGUI 错误框 → 退出应用
+```
+
+佐证：错误码立即数 `0xCB324DEF`（=3412485615，注意换算）在 GameAssembly 中 **0 命中** → 错误码完全由服务端定义下发，客户端只是"信使"。
+
+**结论**：
+- 判决在服务端、证据采集在 grap 内核层 → 改 hook 方式、卸 set_text、缩小注入足迹都无法消除上报源，运行时注入方案在该环境下不可行
+- 具体触发哪条 grap 规则未证实（需逆 grap64.dll 日志加密拿明文），但不影响上述结论
+- **修复方向：转静态离线 t2s**——ExcelDB 密钥解密 → OpenCC 批量繁转简 → 回包，配合已验证安全的静态字体替换，整条 hook 链路退役
 
 ### 5.6 未验证：性能
 
@@ -227,7 +263,10 @@ BA 用 nProtect GameGuard（`nxinface.enconfig.json`）。BepInEx 注入本身�
 
 | 想找什么 | 去哪 |
 | :--- | :--- |
-| 游戏 il2cpp 全部类型 | `dump.cs`（grep 继承关系） |
+| 游戏 il2cpp 全部类型 | `dump.cs`（grep 继承关系）。**注意：仓库根当前为 8 月版**，与 IDA 的 8 月版 GameAssembly.dll 配套；11 月版需重新 dump 后地址重定位 |
+| 踢出链路分发器 | `SessionTask.HandleWebAPIError` = GameAssembly.dll + 0xE278B0（8月版） |
+| ErrorLevel 查询 | `LocalizeData.TryGetErrorLevel` = + 0x18ECA40；错误表查询 `SelectFirst_Key` = + 0x1B7FC70 |
+| 反作弊本体 | `BlueArchive_Data/Plugins/x86_64/grap/`（BlackCat64.sys 内核驱动 + AES 模块 + NGService） |
 | Il2CppInterop 补丁源 | `Il2CppInterop-1.5.3/Il2CppInterop.Runtime/Injection/` |
 | 插件源码 | `translate-master/MuvluvUiTranslate/` |
 | 字体结构 | `相关文档/字体配置分析.md` |
